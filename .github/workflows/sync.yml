@@ -1,0 +1,70 @@
+name: Sync Honors Data
+
+on:
+  schedule:
+    # 每6小时同步一次
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      server:
+        description: '指定服务器 (留空则同步全部)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - cn
+          - jp
+          - en
+          - tw
+          - kr
+
+env:
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        server: [cn, jp, en, tw, kr]
+      fail-fast: false
+      max-parallel: 2
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if should run
+        id: check
+        run: |
+          INPUT_SERVER="${{ github.event.inputs.server }}"
+          MATRIX_SERVER="${{ matrix.server }}"
+          if [ -z "$INPUT_SERVER" ] || [ "$INPUT_SERVER" = "$MATRIX_SERVER" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Python
+        if: steps.check.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        if: steps.check.outputs.should_run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Sync honors for ${{ matrix.server }}
+        if: steps.check.outputs.should_run == 'true'
+        env:
+          SERVER: ${{ matrix.server }}
+        run: python scripts/sync_honors.py
+
+      - name: Summary
+        if: steps.check.outputs.should_run == 'true'
+        run: |
+          echo "## Sync Result for ${{ matrix.server }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Completed at $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
