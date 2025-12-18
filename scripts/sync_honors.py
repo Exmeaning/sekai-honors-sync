@@ -90,12 +90,13 @@ class HonorsSyncer:
         return None
     
     def sync_honors(self) -> int:
-        """同步普通徽章"""
-        # Fetch groups for name resolution
+        """同步普通徽章 (包含 group_name 和 group_type)"""
+        # Fetch groups for name and type resolution
         groups_data = self.fetch_json('honorGroups.json')
         group_map = {}
         if groups_data:
             for g in groups_data:
+                # 存储整个对象以便后续提取
                 group_map[g.get('id')] = g
 
         data = self.fetch_json('honors.json')
@@ -106,30 +107,39 @@ class HonorsSyncer:
         for item in data:
             group_id = item.get('groupId')
             group_name = None
+            group_type = None  # 新增变量
+            
+            # 从 map 中提取 name 和 honorType
             if group_id in group_map:
-                group_name = group_map[group_id].get('name')
+                group_info = group_map[group_id]
+                group_name = group_info.get('name')
+                group_type = group_info.get('honorType') # 提取 honorType
 
             records.append((
                 self.server,
                 item.get('id'),
                 item.get('seq'),
                 group_id,
-                group_name,
+                group_name,      # 写入 group_name
+                group_type,      # 写入 group_type (新增)
                 item.get('honorRarity'),
                 item.get('name'),
                 item.get('assetbundleName'),
                 Json(item.get('levels', [])),
             ))
         
+        # 更新 SQL 语句，加入 group_type
         sql = """
             INSERT INTO honors (
-                server, honor_id, seq, group_id, group_name, honor_rarity, 
-                name, asset_bundle_name, levels, updated_at
+                server, honor_id, seq, group_id, 
+                group_name, group_type,  -- 新增列名
+                honor_rarity, name, asset_bundle_name, levels, updated_at
             ) VALUES %s
             ON CONFLICT (server, honor_id) DO UPDATE SET
                 seq = EXCLUDED.seq,
                 group_id = EXCLUDED.group_id,
                 group_name = EXCLUDED.group_name,
+                group_type = EXCLUDED.group_type, -- 更新冲突处理
                 honor_rarity = EXCLUDED.honor_rarity,
                 name = EXCLUDED.name,
                 asset_bundle_name = EXCLUDED.asset_bundle_name,
@@ -138,9 +148,10 @@ class HonorsSyncer:
         """
         
         with self.conn.cursor() as cur:
+            # 注意 template 中的 %s 数量增加了 1 个 (总共 11 个占位符)
             execute_values(
                 cur, sql, records,
-                template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)"
+                template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)"
             )
         
         logger.info(f"Synced {len(records)} honors for {self.server}")
@@ -298,4 +309,5 @@ def main():
 
 
 if __name__ == '__main__':
+
     main()
