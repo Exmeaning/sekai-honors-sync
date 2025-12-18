@@ -91,17 +91,30 @@ class HonorsSyncer:
     
     def sync_honors(self) -> int:
         """同步普通徽章"""
+        # Fetch groups for name resolution
+        groups_data = self.fetch_json('honorGroups.json')
+        group_map = {}
+        if groups_data:
+            for g in groups_data:
+                group_map[g.get('id')] = g
+
         data = self.fetch_json('honors.json')
         if not data:
             return 0
         
         records = []
         for item in data:
+            group_id = item.get('groupId')
+            group_name = None
+            if group_id in group_map:
+                group_name = group_map[group_id].get('name')
+
             records.append((
                 self.server,
                 item.get('id'),
                 item.get('seq'),
-                item.get('groupId'),
+                group_id,
+                group_name,
                 item.get('honorRarity'),
                 item.get('name'),
                 item.get('assetbundleName'),
@@ -110,12 +123,13 @@ class HonorsSyncer:
         
         sql = """
             INSERT INTO honors (
-                server, honor_id, seq, group_id, honor_rarity, 
+                server, honor_id, seq, group_id, group_name, honor_rarity, 
                 name, asset_bundle_name, levels, updated_at
             ) VALUES %s
             ON CONFLICT (server, honor_id) DO UPDATE SET
                 seq = EXCLUDED.seq,
                 group_id = EXCLUDED.group_id,
+                group_name = EXCLUDED.group_name,
                 honor_rarity = EXCLUDED.honor_rarity,
                 name = EXCLUDED.name,
                 asset_bundle_name = EXCLUDED.asset_bundle_name,
@@ -126,7 +140,7 @@ class HonorsSyncer:
         with self.conn.cursor() as cur:
             execute_values(
                 cur, sql, records,
-                template="(%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)"
+                template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)"
             )
         
         logger.info(f"Synced {len(records)} honors for {self.server}")

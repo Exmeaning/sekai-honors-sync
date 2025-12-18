@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS honors (
     honor_id INT NOT NULL,                 -- 游戏内徽章ID
     seq INT,                               -- 排序序号
     group_id INT,                          -- 徽章组ID
+    group_name VARCHAR(255),               -- 徽章组名称 (from honorGroups)
     honor_rarity VARCHAR(20),              -- low, middle, high, highest
     name VARCHAR(255),                     -- 徽章名称
     asset_bundle_name VARCHAR(255),        -- 资源包名称
